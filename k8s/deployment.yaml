@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-nginx-app
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-nginx-app
+  template:
+    metadata:
+      labels:
+        app: test-nginx-app
+    spec:
+      containers:
+      - name: test-nginx-app
+        image: cr.yandex/crp12lptvmh9j0d4te0j/test-nginx-app:v4
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
