@@ -1,0 +1,68 @@
+# .github/workflows/ci-cd.yaml
+name: Build & Deploy Nginx App via Yandex CI/CD
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]  # рекомендуется вместо тегов — более надёжно
+
+env:
+  YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+  YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+  YC_K8S_CLUSTER_ID: ${{ secrets.YC_K8S_CLUSTER_ID }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
+
+jobs:
+  ci-cd:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install YC CLI
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
+      - name: Configure YC CLI (silent)
+        run: |
+          yc config set cloud-id $(yc config list --format json | jq -r '.[0].cloud-id')
+          yc config set folder-id $YC_FOLDER_ID
+
+      - name: Configure Docker for Yandex Container Registry
+        run: yc container registry configure-docker
+
+      - name: Set image tag
+        id: meta
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+          elif [[ $GITHUB_EVENT_NAME == release ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+          else
+            TAG=latest
+          fi
+          echo "TAG=${TAG}" >> $GITHUB_OUTPUT
+          echo "IMAGE=cr.yandex/${YC_REGISTRY_ID}/test-nginx-app:${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Build & push Docker image
+        run: |
+          docker build -t ${{ steps.meta.outputs.IMAGE }} .
+          docker push ${{ steps.meta.outputs.IMAGE }}
+
+      - name: Fetch Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          yc managed-kubernetes cluster get-credentials $YC_K8S_CLUSTER_ID --external
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl set image deployment/test-nginx-app \
+            test-nginx-app=${{ steps.meta.outputs.IMAGE }} \
+            --namespace=default \
+            --record
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/test-nginx-app --namespace=default --timeout=5m
