@@ -28,7 +28,6 @@ jobs:
 
       - name: Configure YC CLI (silent)
         run: |
-          yc config set cloud-id $(yc config list --format json | jq -r '.[0].cloud-id')
           yc config set folder-id $YC_FOLDER_ID
 
       - name: Configure Docker for Yandex Container Registry
