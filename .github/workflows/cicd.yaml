@@ -13,12 +13,10 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     env:
-      YC_ACCESS_KEY_ID:     ${{ secrets.YC_ACCESS_KEY_ID }}
-      YC_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
-      YC_CLOUD_ID:          ${{ secrets.YC_CLOUD_ID }}
-      YC_FOLDER_ID:         ${{ secrets.YC_FOLDER_ID }}
-      YC_K8S_CLUSTER_ID:    ${{ secrets.YC_K8S_CLUSTER_ID }}
-      YC_REGISTRY_ID:       ${{ secrets.YC_REGISTRY_ID }}
+      YC_CLOUD_ID:       ${{ secrets.YC_CLOUD_ID }}
+      YC_FOLDER_ID:      ${{ secrets.YC_FOLDER_ID }}
+      YC_K8S_CLUSTER_ID: ${{ secrets.YC_K8S_CLUSTER_ID }}
+      YC_REGISTRY_ID:    ${{ secrets.YC_REGISTRY_ID }}
 
     steps:
       - name: Checkout code
@@ -32,17 +30,20 @@ jobs:
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
           echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
 
-      - name: Configure yc CLI (cloud & folder)
+      - name: Restore SA key from secret
+        run: |
+          echo "$YC_SERVICE_ACCOUNT_KEY" | base64 -d > sa-key.json
+        env:
+          YC_SERVICE_ACCOUNT_KEY: ${{ secrets.YC_SERVICE_ACCOUNT_KEY }}
+
+      - name: Authenticate yc CLI with service account key
         run: |
           yc config set cloud-id $YC_CLOUD_ID
           yc config set folder-id $YC_FOLDER_ID
+          yc config set service-account-key sa-key.json
 
-      - name: Docker login to Yandex Container Registry
-        run: |
-          echo "$YC_SECRET_ACCESS_KEY" | docker login \
-            --username "$YC_ACCESS_KEY_ID" \
-            --password-stdin \
-            cr.yandex
+      - name: Configure Docker for Yandex Container Registry
+        run: yc container registry configure-docker
 
       - name: Build and push Docker image (commit hash + latest)
         run: |

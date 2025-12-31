@@ -1,0 +1,55 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfstate.backup
+*.tfvars
+terraform.rc
+
+# Kubernetes
+kubeconfig.yaml
+kubeconfig-base64.txt
+
+# Docker
+.dockerignore
+docker-compose.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+key.json
+*.pem
+*.key
+.env
+secrets/
+*.secret
+*.hcl
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+# Output files
+infra_outputs.txt
+outputs.txt
+terraform_outputs.txt
+
+# Local scripts
+.terraform.lock.hcl
+terraform.tfstate.lock.info
+
+# Project specific
+plan.tfplan
+*.plan
