@@ -16,6 +16,7 @@ spec:
       containers:
       - name: test-nginx-app
         image: cr.yandex/crp12lptvmh9j0d4te0j/test-nginx-app:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
         resources:
