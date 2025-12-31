@@ -31,11 +31,11 @@ jobs:
         run: yc container registry configure-docker
 
       - name: Login to Yandex Cloud Container Registry
-        id: login-cr
-        uses: yc-actions/yc-cr-login@v3
-        with:
-          yc-sa-id: ${{ secrets.YC_SA_ID }}
-
+        run: |
+          echo "${{ secrets.YC_SA_KEY }}" > key.json  # Assuming you stored the key as a secret
+          export IAM_TOKEN=$(yc iam create-token --service-account-key-file key.json)
+          echo $IAM_TOKEN | docker login --username iam --password-stdin cr.yandex
+          
       - name: Set image tag
         id: meta
         run: |
