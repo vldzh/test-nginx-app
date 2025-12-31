@@ -1,102 +1,64 @@
-# .github/workflows/ci-cd.yaml
-name: Build & Deploy Nginx App via Yandex CI/CD
+name: CI/CD — Build & Deploy to Yandex Kubernetes
 
 on:
   push:
-    branches: [main]
-  release:
-    types: [published]  
+    branches:
+      - main
+  workflow_dispatch:
 
 env:
-  YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
-  YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
-  YC_K8S_CLUSTER_ID: ${{ secrets.YC_K8S_CLUSTER_ID }}
-  YC_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
-  YC_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
-  YC_SA_ID: ${{ secrets.YC_SA_ID }}
+  REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+  FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+  CLUSTER_ID: ${{ secrets.YC_K8S_CLUSTER_ID }}
+  IMAGE_NAME: test-nginx-app
 
 jobs:
-  ci-cd:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Docker Buildx
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Install YC CLI
+      # === Authenticate YC CLI using static key (recommended for CI) ===
+      - name: Install yc CLI
         run: |
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
           echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
 
-      - name: Configure Docker for Yandex Container Registry
+      - name: Configure yc CLI with static credentials
+        run: |
+          yc config set folder-id ${{ env.FOLDER_ID }}
+          yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
+          yc config set zone ru-central1-a
+        env:
+          YC_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
+          YC_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
+
+      - name: Configure Docker to use YC Container Registry
         run: yc container registry configure-docker
 
-      - name: Login to Yandex Container Registry
+      # === Build & Push Images ===
+      - name: Build Docker image with commit hash and 'latest' tags
         run: |
-          # Устанавливаем yc CLI и необходимые инструменты
-          sudo apt-get update && sudo apt-get install -y curl jq
-        
-          # Создаем файл с JSON ключом
-          echo '${{ secrets.YC_SA_KEY }}' > sa-key.json
-        
-          # Устанавливаем yc CLI
-          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-          export PATH="$HOME/yandex-cloud/bin:$PATH"
-        
-          # Настраиваем yc
-          yc config set service-account-key sa-key.json
-          yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
-        
-          # Получаем IAM токен
-          IAM_TOKEN=$(yc iam create-token)
-          echo "IAM token first 10 chars: ${IAM_TOKEN:0:10}..."
-        
-          # Логинимся в Container Registry
-          echo $IAM_TOKEN | docker login --username iam --password-stdin cr.yandex
-        
-          # Очищаем чувствительные данные
-          rm sa-key.json
-        
-          # Проверяем логин
-          echo "Docker config:"
-          cat ~/.docker/config.json | grep -A2 -B2 "cr.yandex" || true
-    
-      - name: Build Docker image
-        run: |
-          # Создаем тег с SHA коммита
-          IMAGE_TAG=${REGISTRY}/${REGISTRY_ID}/${IMAGE_NAME}:${GITHUB_SHA::8}
-          IMAGE_LATEST=${REGISTRY}/${REGISTRY_ID}/${IMAGE_NAME}:latest
-        
-          echo "Building image: $IMAGE_TAG"
-          docker build -t $IMAGE_TAG -t $IMAGE_LATEST .
-        
-          # Показываем список образов
-          docker images | grep ${IMAGE_NAME}
-    
-      - name: Push Docker images
-        run: |
-          IMAGE_TAG=${REGISTRY}/${REGISTRY_ID}/${IMAGE_NAME}:${GITHUB_SHA::8}
-          IMAGE_LATEST=${REGISTRY}/${REGISTRY_ID}/${IMAGE_NAME}:latest
-        
-          echo "Pushing $IMAGE_TAG"
-          docker push $IMAGE_TAG
-        
-          echo "Pushing $IMAGE_LATEST"
-          docker push $IMAGE_LATEST 
+          COMMIT_SHORT=${GITHUB_SHA::8}
+          REGISTRY="cr.yandex/${{ env.REGISTRY_ID }}"
+          IMAGE_COMMIT="$REGISTRY/${{ env.IMAGE_NAME }}:$COMMIT_SHORT"
+          IMAGE_LATEST="$REGISTRY/${{ env.IMAGE_NAME }}:latest"
 
-      - name: Fetch Kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          yc managed-kubernetes cluster get-credentials $YC_K8S_CLUSTER_ID --external
+          docker build -t "$IMAGE_COMMIT" -t "$IMAGE_LATEST" .
 
-      - name: Deploy to Kubernetes
+          docker push "$IMAGE_COMMIT"
+          docker push "$IMAGE_LATEST"
+
+      # === Deploy to Kubernetes ===
+      - name: Get Kubeconfig for Yandex Managed Kubernetes
+        run: yc managed-kubernetes cluster get-credentials ${{ env.CLUSTER_ID }} --external
+
+      - name: Deploy latest image to Kubernetes
         run: |
           kubectl set image deployment/test-nginx-app \
-            test-nginx-app=${{ steps.meta.outputs.IMAGE }} \
-            --namespace=default \
+            test-nginx-app=cr.yandex/${{ env.REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest \
             --record
-
-      - name: Wait for rollout
-        run: kubectl rollout status deployment/test-nginx-app --namespace=default --timeout=5m
