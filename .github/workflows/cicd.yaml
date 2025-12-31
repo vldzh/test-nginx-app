@@ -5,14 +5,12 @@ on:
   push:
     branches: [main]
   release:
-    types: [published]  # рекомендуется вместо тегов — более надёжно
+    types: [published]  
 
 env:
   YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
   YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
   YC_K8S_CLUSTER_ID: ${{ secrets.YC_K8S_CLUSTER_ID }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
 
 jobs:
   ci-cd:
@@ -32,6 +30,9 @@ jobs:
 
       - name: Configure Docker for Yandex Container Registry
         run: yc container registry configure-docker
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
 
       - name: Set image tag
         id: meta
@@ -55,6 +56,9 @@ jobs:
         run: |
           mkdir -p ~/.kube
           yc managed-kubernetes cluster get-credentials $YC_K8S_CLUSTER_ID --external
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
 
       - name: Deploy to Kubernetes
         run: |
