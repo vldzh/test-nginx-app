@@ -59,8 +59,5 @@ jobs:
       - name: Get kubeconfig for Yandex Kubernetes
         run: yc managed-kubernetes cluster get-credentials $YC_K8S_CLUSTER_ID --external
 
-      - name: Deploy latest image to Kubernetes
-        run: |
-          kubectl set image deployment/test-nginx-app \
-            test-nginx-app=cr.yandex/$YC_REGISTRY_ID/$IMAGE_NAME:latest \
-            --record
+      - name: Restart deployment to pull new :latest image
+        run: kubectl rollout restart deployment/test-nginx-app
